@@ -1,0 +1,45 @@
+services:
+  cobalt-api:
+    image: ghcr.io/imputnet/cobalt:11
+    init: true
+    read_only: true
+    restart: unless-stopped
+    container_name: cobalt-api
+    ports:
+      - 9000:9000/tcp
+    environment:
+      # Must be the public URL this instance is reachable at, with the trailing
+      # slash. cobalt builds tunnel URLs from it, so a wrong value yields links
+      # the browser cannot fetch.
+      API_URL: "https://cobalt.example.com/"
+
+      # Browsers post here directly from the downloader page, so the page's
+      # origin has to be allowed. Set CORS_URL to that origin and leave the
+      # wildcard off, otherwise anyone can point their site at your instance.
+      CORS_WILDCARD: "0"
+      CORS_URL: "https://videodownloader-gilt.vercel.app"
+
+      # Uncomment to require an Api-Key from callers (pair with
+      # VITE_COBALT_API_KEY in the frontend).
+      # API_KEY_URL: "file:///keys.json"
+
+      # Needed for sources that require a signed-in session. See
+      # https://github.com/imputnet/cobalt/blob/main/docs/configure-for-youtube.md
+      # COOKIE_PATH: "/cookies.json"
+
+      # Optional: cap concurrent tunnels if the host's upload is modest.
+      # RATELIMIT_MAX: "20"
+    labels:
+      - com.centurylinklabs.watchtower.scope=cobalt
+
+    # volumes:
+    #   - ./cookies.json:/cookies.json
+    #   - ./keys.json:/keys.json
+
+  # Keeps the image current; cobalt ships breaking upstream fixes often.
+  watchtower:
+    image: ghcr.io/containrrr/watchtower
+    restart: unless-stopped
+    command: --cleanup --scope cobalt --interval 900 --include-restarting
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

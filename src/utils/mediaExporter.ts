@@ -1,4 +1,5 @@
 import { MediaItem } from '../types';
+import { buildCobaltRequest, isCobaltConfigured, resolveViaCobalt } from './cobaltClient';
 
 export interface ExportProgress {
   percent: number;
@@ -416,16 +417,26 @@ export async function downloadMediaStream({
     finalFileName = `[OmniMedia]_${platformName}_${cleanTitle}_${cleanQuality}.mp4`;
   }
 
-  // 1. PRIMARY: Native SaveFrom.net style streaming attachment (Zero redirects, same-origin trusted download)
-  const serverDownloadUrl = `/api/download?url=${encodeURIComponent(media.originalUrl)}&format=${targetFormat}&title=${encodeURIComponent(cleanTitle)}`;
+  // 1. PRIMARY: resolve the stream from the browser via a cobalt instance.
+  // The /api/download route below stays as the local-dev fallback, but it can
+  // no longer work once deployed: the upstream extractor answers datacenter IPs
+  // with an ad gateway instead of a media node.
+  let serverDownloadUrl = `/api/download?url=${encodeURIComponent(media.originalUrl)}&format=${targetFormat}&title=${encodeURIComponent(cleanTitle)}`;
 
-  onProgress({ percent: 30, stage: 'Connecting to stream extractor...', speed: '48.5 MB/s' });
-  await new Promise((r) => setTimeout(r, 300));
+  if (isCobaltConfigured()) {
+    onProgress({ percent: 30, stage: 'Resolving media stream...', speed: '' });
+    const resolved = await resolveViaCobalt(
+      buildCobaltRequest(media.originalUrl, type, formatId),
+      AbortSignal.timeout(120000)
+    );
+    serverDownloadUrl = resolved.url;
+    if (resolved.filename) finalFileName = resolved.filename;
+  } else {
+    onProgress({ percent: 30, stage: 'Connecting to stream extractor...', speed: '' });
+    await new Promise((r) => setTimeout(r, 300));
+  }
 
-  onProgress({ percent: 70, stage: 'Extracting genuine media bytes...', speed: '52.1 MB/s' });
-  await new Promise((r) => setTimeout(r, 350));
-
-  onProgress({ percent: 100, stage: 'Download ready! Saving file to disk...', speed: '0 MB/s' });
+  onProgress({ percent: 100, stage: 'Download ready! Saving file to disk...', speed: '' });
   await new Promise((r) => setTimeout(r, 200));
 
   safeTriggerDirectDownload(serverDownloadUrl, finalFileName);

@@ -3,6 +3,7 @@ import { DownloadHistoryItem, SupportedPlatform } from '../types';
 import { PLATFORMS_DATA } from '../utils/platformDetector';
 import { Language, TRANSLATIONS } from '../utils/translations';
 import { createSyntheticAudioBlob, createValidMp4Blob, triggerBrowserDownload } from '../utils/mediaExporter';
+import { buildCobaltRequest, isCobaltConfigured, resolveViaCobalt } from '../utils/cobaltClient';
 import {
   Download,
   Trash2,
@@ -44,20 +45,20 @@ export const DownloadHistory: React.FC<DownloadHistoryProps> = ({
 
   const handleReDownload = async (item: DownloadHistoryItem) => {
     try {
-      const extRes = await fetch(`/api/extract?url=${encodeURIComponent(item.url)}&format=${item.type === 'audio' ? 'mp3' : '1080'}`);
-      if (extRes.ok) {
-        const extData = await extRes.json();
-        if (extData.success && extData.downloadUrl) {
-          const a = document.createElement('a');
-          a.href = extData.downloadUrl;
-          a.download = item.fileName;
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => {
-            if (document.body.contains(a)) document.body.removeChild(a);
-          }, 1500);
-          return;
-        }
+      if (isCobaltConfigured()) {
+        const resolved = await resolveViaCobalt(
+          buildCobaltRequest(item.url, item.type === 'audio' ? 'audio' : 'video', item.type === 'audio' ? 'mp3' : '1080'),
+          AbortSignal.timeout(120000)
+        );
+        const a = document.createElement('a');
+        a.href = resolved.url;
+        a.download = resolved.filename || item.fileName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          if (document.body.contains(a)) document.body.removeChild(a);
+        }, 1500);
+        return;
       }
     } catch {
       // fallback
