@@ -273,7 +273,11 @@ export function triggerBrowserDownload(blob: Blob, fileName: string): string {
 
 // Safe download trigger that NEVER unloads the React app and NEVER causes a black screen
 export function safeTriggerDirectDownload(url: string, fileName?: string): void {
-  // Method 1: Detached anchor with download attribute and target _blank
+  // Fire exactly once. This used to click an anchor AND load a hidden iframe
+  // with the same URL, which sent two /api/download requests per click: two
+  // full extractions upstream, competing for the same bandwidth.
+  // target="_blank" keeps a server-side error from navigating the app away --
+  // the browser closes the tab again as soon as the attachment starts.
   const a = document.createElement('a');
   a.style.display = 'none';
   a.href = url;
@@ -289,25 +293,6 @@ export function safeTriggerDirectDownload(url: string, fileName?: string): void 
       // ignore
     }
   }, 1000);
-
-  // Method 2: Hidden iframe to prevent any black screen or tab navigation
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.top = '-9999px';
-  iframe.style.left = '-9999px';
-  iframe.style.width = '1px';
-  iframe.style.height = '1px';
-  iframe.style.opacity = '0';
-  iframe.style.pointerEvents = 'none';
-  iframe.src = url;
-  document.body.appendChild(iframe);
-  setTimeout(() => {
-    try {
-      if (document.body.contains(iframe)) document.body.removeChild(iframe);
-    } catch {
-      // ignore
-    }
-  }, 45000);
 }
 
 // Mobile Web Share API: Saves directly to Camera Roll / Gallery or WhatsApp / Drive

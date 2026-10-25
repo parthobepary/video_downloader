@@ -82,12 +82,14 @@ function apiDevPlugin(): Plugin {
         }
       });
 
-      // Endpoint 2: Direct browser streaming file attachment (SaveFrom style)
+      // Endpoint 2: Resolve the stream, then redirect the browser to the CDN.
+      // Mirrors api/download.ts so local and Vercel behave identically.
       server.middlewares.use('/api/download', async (req, res) => {
         const parsedUrl = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
         const targetUrl = parsedUrl.searchParams.get('url') || '';
         const format = parsedUrl.searchParams.get('format') || '1080';
         const customTitle = parsedUrl.searchParams.get('title') || 'video';
+        const proxyBytes = parsedUrl.searchParams.get('proxy') === '1';
 
         if (!targetUrl) {
           res.statusCode = 400;
@@ -97,7 +99,7 @@ function apiDevPlugin(): Plugin {
 
         const isAudio = format === 'mp3' || format === 'm4a' || format === 'wav';
         const ext = isAudio ? (format === 'wav' ? 'wav' : 'mp3') : 'mp4';
-        const safeTitle = customTitle.replace(/[^a-zA-Z0-9_\-\u0980-\u09FF\s]/g, '').trim().replace(/\s+/g, '_').slice(0, 80) || 'media';
+        const safeTitle = customTitle.replace(/[^a-zA-Z0-9_\-ঀ-৿\s]/g, '').trim().replace(/\s+/g, '_').slice(0, 80) || 'media';
         const fileName = `${safeTitle}.${ext}`;
 
         try {
@@ -132,6 +134,14 @@ function apiDevPlugin(): Plugin {
           if (!downloadUrl) {
             res.statusCode = 504;
             res.end('Extraction timeout');
+            return;
+          }
+
+          if (!proxyBytes) {
+            res.statusCode = 302;
+            res.setHeader('Location', downloadUrl);
+            res.setHeader('Cache-Control', 'no-store');
+            res.end();
             return;
           }
 

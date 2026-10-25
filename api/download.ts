@@ -24,6 +24,9 @@ export default async function handler(
   const targetUrl = parsedUrl.searchParams.get('url') || '';
   const format = parsedUrl.searchParams.get('format') || '1080';
   const customTitle = parsedUrl.searchParams.get('title') || 'download';
+  // Opt-in byte proxying. Off by default: a serverless function cannot relay a
+  // multi-MB media file within its execution limit (see note below).
+  const proxyBytes = parsedUrl.searchParams.get('proxy') === '1';
 
   if (!targetUrl) {
     res.statusCode = 400;
@@ -34,7 +37,7 @@ export default async function handler(
 
   const isAudio = format === 'mp3' || format === 'm4a' || format === 'wav';
   const ext = isAudio ? (format === 'wav' ? 'wav' : 'mp3') : 'mp4';
-  const safeTitle = customTitle.replace(/[^a-zA-Z0-9_\-\u0980-\u09FF\s]/g, '').trim().replace(/\s+/g, '_').slice(0, 80) || 'media';
+  const safeTitle = customTitle.replace(/[^a-zA-Z0-9_\-ঀ-৿\s]/g, '').trim().replace(/\s+/g, '_').slice(0, 80) || 'media';
   const fileName = `${safeTitle}.${ext}`;
   const asciiFileName = `${safeTitle.replace(/[^\x20-\x7E]/g, '_') || 'media'}.${ext}`;
 
@@ -44,6 +47,20 @@ export default async function handler(
       res.statusCode = 502;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.end(`Failed to extract media: ${extracted.error || 'Stream not found'}`);
+      return;
+    }
+
+    // Hand the browser straight to the upstream CDN instead of relaying the
+    // bytes ourselves. Relaying costs the whole file's transfer time inside one
+    // invocation (~77 KB/s observed through the function vs ~2.4 MB/s direct),
+    // so any real video overruns maxDuration and the download dies mid-stream.
+    // The CDN already sends `Content-Disposition: attachment` with the real
+    // title, so the save dialog still behaves.
+    if (!proxyBytes) {
+      res.statusCode = 302;
+      res.setHeader('Location', extracted.downloadUrl);
+      res.setHeader('Cache-Control', 'no-store');
+      res.end();
       return;
     }
 
