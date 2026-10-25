@@ -3,6 +3,11 @@
   "installCommand": "npm install --legacy-peer-deps",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/download.ts": {
+      "maxDuration": 300
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

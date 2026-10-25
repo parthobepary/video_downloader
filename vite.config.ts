@@ -89,7 +89,9 @@ function apiDevPlugin(): Plugin {
         const targetUrl = parsedUrl.searchParams.get('url') || '';
         const format = parsedUrl.searchParams.get('format') || '1080';
         const customTitle = parsedUrl.searchParams.get('title') || 'video';
-        const proxyBytes = parsedUrl.searchParams.get('proxy') === '1';
+        // Mirrors api/download.ts: relay the bytes, because the upstream token
+        // is bound to the IP that created it. ?redirect=1 opts into a CDN 302.
+        const redirectToCdn = parsedUrl.searchParams.get('redirect') === '1';
 
         if (!targetUrl) {
           res.statusCode = 400;
@@ -137,7 +139,7 @@ function apiDevPlugin(): Plugin {
             return;
           }
 
-          if (!proxyBytes) {
+          if (redirectToCdn) {
             res.statusCode = 302;
             res.setHeader('Location', downloadUrl);
             res.setHeader('Cache-Control', 'no-store');

@@ -4,7 +4,7 @@ import { pipeline } from 'stream/promises';
 import { extractMedia } from './extract.js';
 
 export const config = {
-  maxDuration: 60,
+  maxDuration: 300,
 };
 
 export default async function handler(
@@ -24,9 +24,13 @@ export default async function handler(
   const targetUrl = parsedUrl.searchParams.get('url') || '';
   const format = parsedUrl.searchParams.get('format') || '1080';
   const customTitle = parsedUrl.searchParams.get('title') || 'download';
-  // Opt-in byte proxying. Off by default: a serverless function cannot relay a
-  // multi-MB media file within its execution limit (see note below).
-  const proxyBytes = parsedUrl.searchParams.get('proxy') === '1';
+  // Upstream binds each extraction token to the IP that created it, so whoever
+  // called extractMedia also has to fetch the bytes. Redirecting the browser to
+  // the CDN makes the token arrive from a different IP, and upstream answers
+  // with an ad interstitial (text/html) instead of the media. `?redirect=1`
+  // opts into that redirect anyway, for hosts too slow to relay the bytes
+  // inside the function's execution limit.
+  const redirectToCdn = parsedUrl.searchParams.get('redirect') === '1';
 
   if (!targetUrl) {
     res.statusCode = 400;
@@ -50,13 +54,7 @@ export default async function handler(
       return;
     }
 
-    // Hand the browser straight to the upstream CDN instead of relaying the
-    // bytes ourselves. Relaying costs the whole file's transfer time inside one
-    // invocation (~77 KB/s observed through the function vs ~2.4 MB/s direct),
-    // so any real video overruns maxDuration and the download dies mid-stream.
-    // The CDN already sends `Content-Disposition: attachment` with the real
-    // title, so the save dialog still behaves.
-    if (!proxyBytes) {
+    if (redirectToCdn) {
       res.statusCode = 302;
       res.setHeader('Location', extracted.downloadUrl);
       res.setHeader('Cache-Control', 'no-store');
